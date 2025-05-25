@@ -3,52 +3,43 @@ import json
 import base64
 from glob import glob
 
-
 class FileInterface:
     def __init__(self):
         os.chdir('files/')
 
-    def list(self,params=[]):
+    def list(self, params=[]):
         try:
-            filelist = glob('*.*')
-            return dict(status='OK',data=filelist)
+            file_list = glob('*.*')
+            return {'status': 'OK', 'data': file_list}
         except Exception as e:
-            return dict(status='ERROR',data=str(e))
+            return {'status': 'ERROR', 'data': str(e)}
 
-    def upload(self,params=[]):
+    def get(self, params=[]):
         try:
             filename = params[0]
-            filedata_encoded = params[1]
-            filedata = base64.b64decode(filedata_encoded)
-            with open(filename, 'wb') as f:
-                f.write(filedata)
-            return dict(status='OK', data=f"{filename} uploaded")
-        except Exception as e:
-            return dict(Status='ERROR', data=str(e))
-
-    def get(self,params=[]):
-        try:
-            filename = params[0]
-            if (filename == ''):
+            if filename == '':
                 return None
-            fp = open(f"{filename}",'rb')
-            isifile = base64.b64encode(fp.read()).decode()
-            return dict(status='OK',data_namafile=filename,data_file=isifile)
+            with open(f"{filename}", 'rb') as f:
+                file_data = base64.b64encode(f.read()).decode()
+            return {'status': 'OK', 'data_namafile': filename, 'data_file': file_data}
         except Exception as e:
-            return dict(status='ERROR',data=str(e))
+            return {'status': 'ERROR', 'data': str(e)}
+
+    def post(self, params=[]):
+        try:
+            filename = params[0]
+            file_data = params[1]
+            decoded = base64.b64decode(file_data.encode())
+            with open(filename, 'wb') as f:
+                f.write(decoded)
+            return {'status': 'OK', 'data_namafile': filename, 'data_file': file_data}
+        except Exception as e:
+            return {'status': 'ERROR', 'data': str(e)}
 
     def delete(self, params=[]):
         try:
             filename = params[0]
-            if not os.path.exists(filename):
-                return dict(status='ERROR', data='File Not Found')
             os.remove(filename)
-            return dict(status='OK', data=f'{filename} deleted')
+            return {'status': 'OK', 'data_filename': filename}
         except Exception as e:
-            return dict(status='ERROR', data=str(e))
-
-if __name__=='__main__':
-    f = FileInterface()
-    print(f.list())
-    # print(f.get(['pokijan.jpg']))
-    print(f.upload(['test22.txt','hello']))
+            return {'status': 'ERROR', 'data': str(e)}

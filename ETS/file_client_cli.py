@@ -1,107 +1,102 @@
-import os
 import socket
 import json
 import base64
 import logging
 
-server_address=('0.0.0.0',7777)
+MAX_PACKET = 1024 * 1024
 
-def send_command(command_str=""):
-    global server_address
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.connect(server_address)
-    logging.warning(f"connecting to {server_address}")
+
+def exec_command(request: str, address: tuple) -> dict | None:
+    """
+    Kirim perintah ke server dan terima respons JSON.
+    """
     try:
-        logging.warning(f"sending message ")
-        command_str = command_str + "\r\n\r\n"
-        sock.sendall(command_str.encode())
-        # Look for the response, waiting until socket is done (no more data)
-        data_received="" #empty string
+        connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        connection.connect(address)
+        connection.sendall(request.encode())
+
+        buffer = ""
         while True:
-            #socket does not receive all data at once, data comes in part, need to be concatenated at the end of process
-            data = sock.recv(16)
-            if data:
-                #data is not empty, concat with previous content
-                data_received += data.decode()
-                if "\r\n\r\n" in data_received:
-                    break
-            else:
-                # no more data, stop the process by break
+            chunk = connection.recv(MAX_PACKET)
+            if not chunk:
                 break
-        # at this point, data_received (string) will contain all data coming from the socket
-        # to be able to use the data_received as a dict, need to load it using json.loads()
-        hasil = json.loads(data_received)
-        logging.warning("data received from server:")
-        return hasil
-    except:
-        logging.warning("error during data receiving")
-        return False
+            buffer += chunk.decode()
+            if "\r\n\r\n" in buffer:
+                break
+
+        connection.close()
+        return json.loads(buffer)
+    except Exception as e:
+        logging.error(f"Execution error: {e}")
+        return None
 
 
-def remote_list():
-    command_str=f"LIST"
-    hasil = send_command(command_str)
-    if (hasil['status']=='OK'):
-        print("daftar file : ")
-        for nmfile in hasil['data']:
-            print(f"- {nmfile}")
-        return True
+def list_remote(address: tuple) -> None:
+    resp = exec_command("LIST\r\n\r\n", address)
+    if resp and resp.get('status') == 'OK':
+        print("Daftar berkas dari server:")
+        for name in resp['data']:
+            print(f"- {name}")
     else:
-        print("Gagal")
-        return False
+        print("Gagal mengambil daftar berkas.")
 
-def remote_get(filename=""):
-    command_str=f"GET {filename}"
-    hasil = send_command(command_str)
-    if (hasil['status']=='OK'):
-        #proses file dalam bentuk base64 ke bentuk bytes
-        namafile= hasil['data_namafile']
-        isifile = base64.b64decode(hasil['data_file'])
-        fp = open(namafile,'wb+')
-        fp.write(isifile)
-        fp.close()
-        return True
+
+def download_remote(filename: str, address: tuple) -> None:
+    resp = exec_command(f"GET {filename}\r\n\r\n", address)
+    if resp and resp.get('status') == 'OK':
+        encoded = resp['data_file']
+        local_name = resp.get('data_namafile', filename)
+        with open(local_name, 'wb') as out:
+            out.write(base64.b64decode(encoded))
+        print(f"Berkas '{filename}' berhasil diunduh sebagai '{local_name}'.")
     else:
-        print("Gagal")
-        return False
+        print(f"Gagal mengunduh '{filename}'.")
 
-def remote_upload(filename=""):
-    if not os.path.exists(filename):
-        logging.warning("File does not exist")
-        return False
-    with open(filename, "rb") as fp:
-        file_content = fp.read()
-    encoded_content = base64.b64encode(file_content).decode()
-    command_str = f"UPLOAD {filename} {encoded_content}"
-    hasil = send_command(command_str)
-    if hasil and hasil.get('status') == 'OK':
-        print(hasil['data'])
-        return True
-    else:
-        print(hasil['data'])
-        return False
 
-def remote_delete(filename=""):
-    command_str=f"DELETE {filename}"
-    hasil = send_command(command_str)
-    if (hasil['status']=='OK'):
-        print(hasil['data'])
-        return True
-    else:
-        print(hasil['data'])
-        return False
+def upload_remote(path: str, address: tuple) -> None:
+    try:
+        with open(path, 'rb') as file:
+            data_b64 = base64.b64encode(file.read()).decode()
+        resp = exec_command(f"POST {path} {data_b64}\r\n\r\n", address)
+        if resp and resp.get('status') == 'OK':
+            print(f"File '{path}' berhasil diunggah.")
+        else:
+            print(f"Gagal mengunggah '{path}'.")
+    except FileNotFoundError:
+        print(f"File '{path}' tidak ditemukan.")
 
-if __name__=='__main__':
-    server_address=('127.0.0.0',5555)
-    remote_list()
-    remote_get('donalbebek.jpg')
-    remote_upload('donalbebek2.jpg')
-    remote_list()
-    remote_upload('pdf.pdf')
-    remote_list()
-    remote_upload('poki1.jpg')
-    remote_list()
-    remote_delete('poki1.jpg')
-    remote_list()
-    remote_delete('donalbebek.jpg')
-    remote_list()
+
+def main() -> None:
+    host = input("Server host (default: localhost): ").strip() or 'localhost'
+    port_input = input("Server port (default: 6666): ").strip()
+    port_num = int(port_input) if port_input.isdigit() else 6666
+    endpoint = (host, port_num)
+
+    active = True
+    while active:
+        print("\nOperasi:")
+        print("1. Tampilkan daftar berkas")
+        print("2. Unduh berkas")
+        print("3. Unggah berkas")
+        print("4. Keluar")
+        choice = input("Pilih [1-4]: ").strip()
+
+        if choice == '1':
+            list_remote(endpoint)
+        elif choice == '2':
+            fname = input("Nama berkas untuk diunduh: ").strip()
+            if fname:
+                download_remote(fname, endpoint)
+        elif choice == '3':
+            fname = input("Nama berkas untuk diunggah: ").strip()
+            if fname:
+                upload_remote(fname, endpoint)
+        elif choice == '4':
+            active = False
+        else:
+            print("Pilihan tidak valid.")
+
+
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.WARNING)
+    main()
