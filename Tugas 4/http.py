@@ -64,12 +64,21 @@ class HttpServer:
 
     # Mengunggah file
     def http_upload(self, object_address, headers):
+        # Mendapatkan panjang konten dari header
         content_length = int(headers.get('Content-Length', 0))
+        
+        # Membaca data file biner yang dikirimkan
         body = self.rfile.read(content_length)
         filename = object_address.strip('/')
-        with open(filename, 'wb') as f:
-            f.write(body)
-        return self.response(200, 'OK', 'File uploaded successfully', {'Content-type': 'text/plain'})
+    
+        # Menyimpan file yang diterima
+        try:
+            with open(filename, 'wb') as f:
+                f.write(body)
+            return self.response(200, 'OK', 'File uploaded successfully', {'Content-type': 'text/plain'})
+        except Exception as e:
+            return self.response(500, 'Internal Server Error', str(e), {'Content-type': 'text/plain'})
+
 
     # Menghapus file
     def http_delete(self, object_address, headers):
